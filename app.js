@@ -23,7 +23,7 @@ cron.schedule('01 01 * * *', () => {
         // "assets/dis_reports",
     ]
     
-    empty_these_directories.map((directory) => {
+    empty_these_directories.map((directory) => { 
         fs.readdir(directory, (err, files) => {
             if (err) throw err;
     
