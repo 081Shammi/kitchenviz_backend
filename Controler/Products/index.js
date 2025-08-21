@@ -37,7 +37,7 @@ exports.createProduct = async (req, res) => {
       });
   
       const createdProduct = await product.save();
-      await createdProduct.populate('category', 'name').populate('image').execPopulate();
+    //   await createdProduct.populate('category', 'name').populate('image').execPopulate();
   
       return res.status(201).json(createdProduct);
   
