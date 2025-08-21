@@ -3,60 +3,61 @@ const Product = require('../../Modals/Products');
 
 // Create a new product
 exports.createProduct = async (req, res) => {
-  try {
-    const {
-      name,
-      image,         
-    //   images,
-      category,
-      description,
-      price,
-      countInStock,
-      productDiscountedPrice,
-    } = req.body;
-
-    // Validate required fields
-    if (
-      !name ||
-      !Array.isArray(image) || image.length === 0 || // image must be non-empty array
-      !category ||
-      !description ||
-      countInStock === undefined ||
-      productDiscountedPrice === undefined
-    ) {
-      return res.status(400).json({ message: 'Required fields are missing or invalid.' });
+    try {
+      const {
+        name,
+        image,         
+        category,
+        description,
+        price,
+        countInStock,
+        productDiscountedPrice,
+      } = req.body;
+  
+      // Validate required fields
+      if (
+        !name ||
+        !Array.isArray(image) || image.length === 0 || // image must be non-empty array
+        !category ||
+        !description ||
+        countInStock === undefined ||
+        productDiscountedPrice === undefined
+      ) {
+        return res.status(400).json({ message: 'Required fields are missing or invalid.' });
+      }
+  
+      // Convert each image string to mongoose ObjectId instance
+      const imageObjectIds = image.map(id => mongoose.Types.ObjectId(id));
+  
+      // Check for duplicate product name
+      const existingProduct = await Product.findOne({ name: name.trim() });
+      if (existingProduct) {
+        return res.status(409).json({ message: 'Product with this name already exists.' });
+      }
+  
+      const product = new Product({
+        name: name.trim(),
+        image: imageObjectIds,
+        category: mongoose.Types.ObjectId(category),
+        description,
+        price,
+        countInStock,
+        productDiscountedPrice,
+        rating: 0,
+        numReviews: 0,
+      });
+  
+      const createdProduct = await product.save();
+  
+      // Populate references
+      await createdProduct.populate('category', 'name').populate('image').execPopulate();
+  
+      return res.status(201).json(createdProduct);
+    } catch (error) {
+      console.error('Error creating product:', error);
+      return res.status(500).json({ message: 'Server error while creating product.' });
     }
-
-    // Check for duplicate product name
-    const existingProduct = await Product.findOne({ name: name.trim() });
-    if (existingProduct) {
-      return res.status(409).json({ message: 'Product with this name already exists.' });
-    }
-
-    const product = new Product({
-      name: name.trim(),
-      image,
-      images,
-      category,
-      description,
-      price,
-      countInStock,
-      productDiscountedPrice,
-      rating: 0,
-      numReviews: 0,
-      reviews: [],
-    });
-
-    const createdProduct = await product.save();
-    // Populate category and image refs for response
-    await createdProduct.populate('category', 'name').populate('image').execPopulate();
-
-    return res.status(201).json(createdProduct);
-  } catch (error) {
-    console.error('Error creating product:', error);
-    return res.status(500).json({ message: 'Server error while creating product.' });
-  }
-};
+  };
 
 // Get all products
 exports.getProducts = async (req, res) => {
