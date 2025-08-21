@@ -19,12 +19,16 @@ const API_ROOT ='/'
 const userRoutes = require("./routes/User");
 const categoryRoutes = require("./routes/Category");
 const productRoutes = require("./routes/Product");
-
+const mediaTypeRoutes = require('./routes/mediaType');
+const mediaRoutes = require('./routes/media');
 
 
 app.use(`${API_ROOT}user`, userRoutes);
 app.use(`${API_ROOT}product`, productRoutes);
 app.use(`${API_ROOT}category`, categoryRoutes);
+app.use(`${API_ROOT}media-type`, mediaTypeRoutes)
+app.use(`${API_ROOT}media`, mediaRoutes)
+
 
 app.get('/', (req, res) => {
     res.send('Hello from Node.js backend!');
