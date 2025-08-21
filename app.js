@@ -1,20 +1,52 @@
 const express = require('express');
 const app = express();
-const PORT = process.env.PORT || 4050;
+const PORT = process.env.PORT || 5000;
 const mongoose = require("mongoose");
+const morgan = require("morgan");
 const helmet = require("helmet");
+const path = require("path");
 const cors = require("cors");
+const cron = require('node-cron');
+const fs = require("fs");
 
 
 
 app.use(cors());
 
+
+
+cron.schedule('01 01 * * *', () => {
+    const empty_these_directories = [
+        "assets/temp_resources",
+        "assets/images",
+        "assets/documents",
+        // "assets/dis_reports",
+    ]
+    
+    empty_these_directories.map((directory) => {
+        fs.readdir(directory, (err, files) => {
+            if (err) throw err;
+    
+            for (const file of files) {
+                fs.unlink(path.join(directory, file), (err) => {
+                    if (err) throw err;
+                });
+            }
+        });
+    });
+});
+
+app.use(cors());
+
 app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
 
+app.use(morgan("dev"));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 const API_ROOT ='/' 
+app.use(`${API_ROOT}assets`, express.static(path.join(__dirname, "assets")));
+app.disable('etag');
 
 const userRoutes = require("./routes/User");
 const categoryRoutes = require("./routes/Category");
