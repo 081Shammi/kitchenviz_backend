@@ -32,7 +32,7 @@ const productSchema = new mongoose.Schema(
     productDiscountedPrice: { type: Number, required: true },
     rating: { type: Number},
     numReviews: { type: Number },
-    reviews: [reviewSchema],
+    // reviews: [reviewSchema],
   },
   {
     timestamps: true,
