@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Product = require('../../Modals/Products');
 
 // Create a new product
@@ -5,7 +6,7 @@ exports.createProduct = async (req, res) => {
   try {
     const {
       name,
-      image,
+      image,           // Expects array of ObjectId
       images,
       category,
       description,
@@ -15,7 +16,14 @@ exports.createProduct = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!name || !image || !category || !description || countInStock === undefined || productDiscountedPrice === undefined) {
+    if (
+      !name ||
+      !Array.isArray(image) || image.length === 0 || // image must be non-empty array
+      !category ||
+      !description ||
+      countInStock === undefined ||
+      productDiscountedPrice === undefined
+    ) {
       return res.status(400).json({ message: 'Required fields are missing or invalid.' });
     }
 
@@ -40,6 +48,9 @@ exports.createProduct = async (req, res) => {
     });
 
     const createdProduct = await product.save();
+    // Populate category and image refs for response
+    await createdProduct.populate('category', 'name').populate('image').execPopulate();
+
     return res.status(201).json(createdProduct);
   } catch (error) {
     console.error('Error creating product:', error);
@@ -50,7 +61,11 @@ exports.createProduct = async (req, res) => {
 // Get all products
 exports.getProducts = async (req, res) => {
   try {
-    const products = await Product.find().populate('category', 'name').sort({ createdAt: -1 });
+    const products = await Product.find()
+      .populate('category', 'name')
+      .populate('image')
+      .sort({ createdAt: -1 });
+
     return res.status(200).json(products);
   } catch (error) {
     console.error('Error fetching products:', error);
@@ -61,10 +76,14 @@ exports.getProducts = async (req, res) => {
 // Get single product by ID
 exports.getProductById = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id).populate('category', 'name');
+    const product = await Product.findById(req.params.id)
+      .populate('category', 'name')
+      .populate('image');
+
     if (!product) {
       return res.status(404).json({ message: 'Product not found.' });
     }
+
     return res.status(200).json(product);
   } catch (error) {
     console.error('Error fetching product:', error);
@@ -77,7 +96,7 @@ exports.updateProduct = async (req, res) => {
   try {
     const {
       name,
-      image,
+      image,   // Expect array of ObjectId
       images,
       category,
       description,
@@ -93,7 +112,12 @@ exports.updateProduct = async (req, res) => {
 
     // Update fields if present in request body
     if (name) product.name = name.trim();
-    if (image) product.image = image;
+    if (image) {
+      if (!Array.isArray(image)) {
+        return res.status(400).json({ message: '"image" must be an array of media ObjectIds.' });
+      }
+      product.image = image;
+    }
     if (images) product.images = images;
     if (category) product.category = category;
     if (description) product.description = description;
@@ -102,6 +126,8 @@ exports.updateProduct = async (req, res) => {
     if (productDiscountedPrice !== undefined) product.productDiscountedPrice = productDiscountedPrice;
 
     const updatedProduct = await product.save();
+    await updatedProduct.populate('category', 'name').populate('image').execPopulate();
+
     return res.status(200).json(updatedProduct);
   } catch (error) {
     console.error('Error updating product:', error);

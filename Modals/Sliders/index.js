@@ -6,7 +6,11 @@ import mongoose from 'mongoose';
 const slideProductSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, unique: true },
-    images: [String],
+    image: [{
+      type: ObjectId,
+      ref: "media",
+      required: false
+    }],    
     description: { type: String, required: true },
     product:{ type: mongoose.Types.ObjectId,
       required: true,
