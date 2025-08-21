@@ -1,7 +1,7 @@
-import Category from '../../Modals/Category';
+const Category = require("../../Modals/Category");
 
 // Create a new category
-export const createCategory = async (req, res) => {
+module.exports.createCategory = async (req, res) => {
   try {
     const { name } = req.body;
 
@@ -26,8 +26,9 @@ export const createCategory = async (req, res) => {
   }
 };
 
+
 // Get all categories
-export const getCategories = async (req, res) => {
+module.exports.getCategories = async (req, res) => {
   try {
     const categories = await Category.find().sort({ createdAt: -1 }); // newest first
     return res.status(200).json(categories);
@@ -38,7 +39,7 @@ export const getCategories = async (req, res) => {
 };
 
 // Get a single category by ID
-export const getCategoryById = async (req, res) => {
+module.exports.getCategoryById = async (req, res) => {
   try {
     const { id } = req.params;
 

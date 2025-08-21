@@ -17,10 +17,14 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 const API_ROOT ='/' 
 
 const userRoutes = require("./routes/User");
+const categoryRoutes = require("./routes/Category");
+const productRoutes = require("./routes/Product");
 
 
 
 app.use(`${API_ROOT}user`, userRoutes);
+app.use(`${API_ROOT}product`, productRoutes);
+app.use(`${API_ROOT}category`, categoryRoutes);
 
 app.get('/', (req, res) => {
     res.send('Hello from Node.js backend!');

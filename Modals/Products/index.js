@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
 const reviewSchema = new mongoose.Schema(
   {
@@ -33,6 +33,11 @@ const productSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
-
-const Product = mongoose.model('Product', productSchema);
-export default Product;
+productSchema.set("toJSON", {
+  transform: (doc, ret, options) => {
+    ret.id = ret._id;
+    delete ret._id;
+    delete ret.__v;
+  }
+});
+module.exports = mongoose.model('Product', productSchema);

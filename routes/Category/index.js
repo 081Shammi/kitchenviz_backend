@@ -1,19 +1,15 @@
-import express from 'express';
-import {
-  createCategory,
-  getCategories,
-  getCategoryById,
-} from '../../Controler/Category';
-
+const express = require("express");
+const categoryController = require("../../Controler/Category");
+const { body } = require("express-validator");
 const router = express.Router();
 
 // POST create a category
-router.post('/', createCategory);
+router.post('/', categoryController.createCategory);
 
 // GET all categories
-router.get('/', getCategories);
+router.get('/', categoryController.getCategories);
 
 // GET category by ID
-router.get('/:id', getCategoryById);
+router.get('/:id', categoryController.getCategoryById);
 
-export default router;
+module.exports = router;
