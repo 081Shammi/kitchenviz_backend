@@ -27,7 +27,7 @@ const productSchema = new mongoose.Schema(
       ref: 'Category',
     },
     description: { type: String, required: true },
-    price: { type: Number },
+    price: { type: Number, required: true  },
     countInStock: { type: Number, required: true },
     productDiscountedPrice: { type: Number, required: true },
     rating: { type: Number},

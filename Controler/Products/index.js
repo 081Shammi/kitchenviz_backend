@@ -6,8 +6,8 @@ exports.createProduct = async (req, res) => {
   try {
     const {
       name,
-      image,           // Expects array of ObjectId
-      images,
+      image,         
+    //   images,
       category,
       description,
       price,
