@@ -1,12 +1,12 @@
 const mongoose = require('mongoose');
 const Product = require('../../Modals/Products');
 
-// Create a new product
+
 exports.createProduct = async (req, res) => {
     try {
       const {
         name,
-        image,         
+        image,
         category,
         description,
         price,
@@ -14,31 +14,19 @@ exports.createProduct = async (req, res) => {
         productDiscountedPrice,
       } = req.body;
   
-      // Validate required fields
-      if (
-        !name ||
-        !Array.isArray(image) || image.length === 0 || // image must be non-empty array
-        !category ||
-        !description ||
-        countInStock === undefined ||
-        productDiscountedPrice === undefined
-      ) {
-        return res.status(400).json({ message: 'Required fields are missing or invalid.' });
-      }
+      // validations here...
   
-      // Convert each image string to mongoose ObjectId instance
-      const imageObjectIds = image.map(id => mongoose.Types.ObjectId(id));
+      // Convert image string IDs to ObjectId instances using 'new'
+      const imageObjectIds = image.map(id => new ObjectId(id));
   
-      // Check for duplicate product name
-      const existingProduct = await Product.findOne({ name: name.trim() });
-      if (existingProduct) {
-        return res.status(409).json({ message: 'Product with this name already exists.' });
-      }
+      // Convert category to ObjectId instance
+      const categoryObjectId = new ObjectId(category);
   
+      // Continue with creation
       const product = new Product({
         name: name.trim(),
         image: imageObjectIds,
-        category: mongoose.Types.ObjectId(category),
+        category: categoryObjectId,
         description,
         price,
         countInStock,
@@ -48,13 +36,13 @@ exports.createProduct = async (req, res) => {
       });
   
       const createdProduct = await product.save();
-  
-      // Populate references
       await createdProduct.populate('category', 'name').populate('image').execPopulate();
   
       return res.status(201).json(createdProduct);
+  
     } catch (error) {
       console.error('Error creating product:', error);
+      console.error(error.stack);
       return res.status(500).json({ message: 'Server error while creating product.' });
     }
   };
