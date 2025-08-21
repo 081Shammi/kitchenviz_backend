@@ -50,25 +50,61 @@ exports.createProduct = async (req, res) => {
 
 // Get all products
 exports.getProducts = async (req, res) => {
-  try {
-    const products = await Product.find()
-      .populate('category', 'name')
-      .populate('image')
-      .sort({ createdAt: -1 });
-
-    return res.status(200).json(products);
-  } catch (error) {
-    console.error('Error fetching products:', error);
-    return res.status(500).json({ message: 'Server error while fetching products.' });
-  }
-};
+    try {
+      const products = await Product.aggregate([
+        {
+          $lookup: {
+            from: 'categories',          
+            localField: 'category',       
+            foreignField: '_id',          
+            as: 'categoryDetails'
+          }
+        },
+        { $unwind: '$categoryDetails' }, 
+  
+        {
+          $lookup: {
+            from: 'media',               
+            localField: 'image',          
+            foreignField: '_id',
+            as: 'imageDetails'
+          }
+        },
+  
+        {
+          $project: {
+            name: 1,
+            description: 1,
+            price: 1,
+            countInStock: 1,
+            productDiscountedPrice: 1,
+            rating: 1,
+            numReviews: 1,
+            reviews: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            category: '$categoryDetails.name',  
+            image: '$imageDetails',             
+          }
+        },
+  
+        { $sort: { createdAt: -1 } }
+      ]);
+  
+      return res.status(200).json(products);
+    } catch (error) {
+      console.error('Error fetching products with aggregation:', error);
+      return res.status(500).json({ message: 'Server error while fetching products.' });
+    }
+  };
+  
 
 // Get single product by ID
 exports.getProductById = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
       .populate('category', 'name')
-      .populate('image');
+      .populate('image');   
 
     if (!product) {
       return res.status(404).json({ message: 'Product not found.' });
