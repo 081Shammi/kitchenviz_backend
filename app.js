@@ -16,6 +16,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 const API_ROOT ='/' 
 
+const userRoutes = require("./routes/User");
+
+
+
+app.use(`${API_ROOT}user`, userRoutes);
 
 app.get('/', (req, res) => {
     res.send('Hello from Node.js backend!');
@@ -25,7 +30,7 @@ app.get('/', (req, res) => {
   
   // Database connection
   try {
-      const DB_URL = process.env.DB_URL || "mongodb://localhost:27017/Membership";
+      const DB_URL = process.env.DB_URL || "mongodb://localhost:27017/kitchenviz";
       const DB_PORT = process.env.PORT || PORT;
   
       mongoose.connect(DB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
