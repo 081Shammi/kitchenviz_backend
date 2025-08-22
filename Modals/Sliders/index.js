@@ -1,7 +1,8 @@
 
 
-import mongoose from 'mongoose';
-
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+const ObjectId = Schema.Types.ObjectId;
 
 const slideProductSchema = new mongoose.Schema(
   {
@@ -19,7 +20,8 @@ const slideProductSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
-const ProductSlider = mongoose.model('ProductSlider', slideProductSchema);
-export default ProductSlider;
+
+module.exports = mongoose.model('ProductSlider', slideProductSchema);
+
 
 
