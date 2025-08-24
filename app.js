@@ -54,6 +54,8 @@ const productRoutes = require("./routes/Product");
 const mediaTypeRoutes = require('./routes/mediaType');
 const mediaRoutes = require('./routes/media');
 const sliderRoutes = require('./routes/Sliders');
+const orderRoutes = require('./routes/Order');
+
 
 
 app.use(`${API_ROOT}user`, userRoutes);
@@ -62,6 +64,7 @@ app.use(`${API_ROOT}category`, categoryRoutes);
 app.use(`${API_ROOT}media-type`, mediaTypeRoutes)
 app.use(`${API_ROOT}media`, mediaRoutes)
 app.use(`${API_ROOT}slider`, sliderRoutes);
+app.use(`${API_ROOT}order`, orderRoutes);
 
 
 app.get('/', (req, res) => {
