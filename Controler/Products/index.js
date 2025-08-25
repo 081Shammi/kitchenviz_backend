@@ -160,3 +160,25 @@ exports.updateProduct = async (req, res) => {
     return res.status(500).json({ message: 'Server error while updating product.' });
   }
 };
+
+
+exports.deleteProduct = async (req, res) => {
+    try {
+      const { id } = req.params;
+  
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ message: 'Invalid slider ID.' });
+      }
+  
+      const product = await Product.findById(id);
+      if (!product) {
+        return res.status(404).json({ message: 'Product not found.' });
+      }
+  
+      await product.remove();
+      return res.status(200).json({ message: 'Slider deleted successfully.' });
+    } catch (error) {
+      console.error('Error deleting slider:', error);
+      return res.status(500).json({ message: 'Server error while deleting slider.' });
+    }
+  };
