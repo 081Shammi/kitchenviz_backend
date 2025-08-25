@@ -15,7 +15,7 @@ router.patch(
 router.get("/:id", getOrderById);
 
 router.patch(
-    "/order/updateShippingStatus/:id",updateShippingStatus
+    "/updateShippingStatus/:id",updateShippingStatus
   );
 
 module.exports = router;
