@@ -153,7 +153,7 @@ exports.placeOrder = async (req, res) => {
 exports.getAllOrders = async (req, res) => {
   try {
     const orders = await Order.find()
-      .populate("user", "name email")
+    //   .populate("user", "name email")
       .populate({
         path: "orderItems.product",
         model: "Product",
