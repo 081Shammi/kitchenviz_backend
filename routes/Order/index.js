@@ -14,7 +14,7 @@ router.patch(
     "/updateStatus/:id",updateOrderStatus
 );
 
-router.get("/order/:id", getOrderById);
+router.get("/:id", getOrderById);
 
 router.patch(
     "/order/updateShippingStatus/:id",updateShippingStatus
