@@ -1,5 +1,5 @@
 const express = require('express');
-const { placeOrder,getAllOrders,updateOrderStatus } = require('../../Controler/Order');
+const { placeOrder,getAllOrders,updateOrderStatus,updateShippingStatus,getOrderById } = require('../../Controler/Order');
 
 // Optionally add authentication middleware if needed
 // const { protect } = require('../middleware/authMiddleware');
@@ -16,5 +16,8 @@ router.patch(
 
 router.get("/order/:id", getOrderById);
 
+router.patch(
+    "/order/updateShippingStatus/:id",updateShippingStatus
+  );
 
 module.exports = router;

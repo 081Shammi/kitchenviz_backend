@@ -272,3 +272,37 @@ exports.updateOrderStatus = async (req, res) => {
   
     res.status(200).json(orderAggregate[0]);
   }
+
+  exports.updateShippingStatus = async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+  
+    // Validate ID and status
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid order id." });
+    }
+    if (!["dispatched", "outForDelivery", "delivered"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status value." });
+    }
+  
+    let updateFields = {};
+  
+    if (status === "dispatched") {
+      updateFields.isDispatched = true;
+    } else if (status === "outForDelivery") {
+      updateFields.isOutForDelivery = true;
+    } else if (status === "delivered") {
+      updateFields.isDelivered = true;
+      updateFields.deliveredAt = new Date();
+    }
+  
+    const updatedOrder = await Order.findByIdAndUpdate(
+      id,
+      { $set: updateFields },
+      { new: true }
+    );
+    if (!updatedOrder) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+    res.status(200).json({ message: `Order marked as ${status}.`, order: updatedOrder });
+  }
