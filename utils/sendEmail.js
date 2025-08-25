@@ -1,5 +1,3 @@
-// emailService.js
-
 const nodemailer = require("nodemailer");
 
 // Configure nodemailer transporter using your SMTP credentials
@@ -14,11 +12,7 @@ const transporter = nodemailer.createTransport({
 });
 
 /**
- * Generates HTML content for order status email
- * @param {string} userName - User's name for personalization
- * @param {string} orderId - Order ID to include in the email
- * @param {string} status - Order status (e.g., 'accepted', 'rejected')
- * @returns {string} - HTML content string
+ * Generates HTML content for order status email (accept/reject)
  */
 const orderStatusEmailContent = (userName, orderId, status) => `
   <div style="font-family: Arial, sans-serif; line-height: 1.6;">
@@ -32,25 +26,78 @@ const orderStatusEmailContent = (userName, orderId, status) => `
 `;
 
 /**
- * Sends an order status update email to the user
- * @param {string} userEmail - Recipient email address
- * @param {string} userName - Recipient name
- * @param {string} orderId - Order ID
- * @param {string} status - Status update (e.g., 'accepted', 'rejected')
- * @returns {Promise<boolean>} - Returns true if email sent successfully, else false
+ * Generates HTML content for order placed confirmation email
+ */
+const orderPlacedEmailContent = (userName, orderId) => `
+  <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+    <h2>Order Placed Successfully</h2>
+    <p>Hello ${userName},</p>
+    <p>Thank you for your order! Your order id is <strong>${orderId}</strong>.</p>
+    <p>We are processing your order and will notify you once it is accepted.</p>
+    <br/>
+    <p>If you have any questions, feel free to contact our support team.</p>
+    <p>Thank you for shopping with us.</p>
+  </div>
+`;
+
+/**
+ * Generates HTML content for shipping status emails (dispatched, outForDelivery, delivered)
+ */
+const shippingStatusEmailTemplates = {
+  dispatched: (userName, orderId) => `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+      <h2>Order Dispatched</h2>
+      <p>Hi ${userName},</p>
+      <p>Your order with ID <strong>${orderId}</strong> has been <strong>dispatched</strong> from our warehouse.</p>
+      <p>We will update you once it is out for delivery.</p>
+      <br/>
+      <p>Thank you for shopping with us.</p>
+    </div>
+  `,
+  outForDelivery: (userName, orderId) => `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+      <h2>Out for Delivery</h2>
+      <p>Hi ${userName},</p>
+      <p>Good news! Your order with ID <strong>${orderId}</strong> is now <strong>out for delivery</strong>.</p>
+      <p>Please be available to receive your package.</p>
+      <br/>
+      <p>Thank you for shopping with us.</p>
+    </div>
+  `,
+  delivered: (userName, orderId) => `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+      <h2>Order Delivered</h2>
+      <p>Hi ${userName},</p>
+      <p>Your order with ID <strong>${orderId}</strong> has been successfully <strong>delivered</strong>.</p>
+      <p>We hope you enjoy your purchase. Thank you!</p>
+    </div>
+  `,
+};
+
+/**
+ * Sends an order status update email (accept, reject, or shipping status)
  */
 async function sendOrderStatusEmail(userEmail, userName, orderId, status) {
   try {
+    let htmlContent;
+
+    if (["dispatched", "outForDelivery", "delivered"].includes(status)) {
+      htmlContent = shippingStatusEmailTemplates[status](userName, orderId);
+    } else {
+      htmlContent = orderStatusEmailContent(userName, orderId, status);
+    }
+
     await transporter.sendMail({
       from: process.env.SMTP_USER || "shrikanthorp@gmail.com",
       to: userEmail,
       subject: `Your order has been ${status}`,
-      html: orderStatusEmailContent(userName, orderId, status),
+      html: htmlContent,
       envelope: {
         from: process.env.SMTP_USER || "shrikanthorp@gmail.com",
         to: userEmail,
       },
     });
+
     return true;
   } catch (error) {
     console.error("Error sending order status email:", error);
@@ -58,6 +105,30 @@ async function sendOrderStatusEmail(userEmail, userName, orderId, status) {
   }
 }
 
+/**
+ * Sends an order placed confirmation email
+ */
+async function sendOrderPlacedEmail(userEmail, userName, orderId) {
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_USER || "shrikanthorp@gmail.com",
+      to: userEmail,
+      subject: "Your order has been placed successfully",
+      html: orderPlacedEmailContent(userName, orderId),
+      envelope: {
+        from: process.env.SMTP_USER || "shrikanthorp@gmail.com",
+        to: userEmail,
+      },
+    });
+
+    return true;
+  } catch (error) {
+    console.error("Error sending order placed email:", error);
+    return false;
+  }
+}
+
 module.exports = {
   sendOrderStatusEmail,
+  sendOrderPlacedEmail,
 };

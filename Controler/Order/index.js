@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const Order = require("../../Modals/OrderSchema");
 const Product = require("../../Modals/Products"); // To validate product existence
 const { ObjectId } = mongoose.Types;
-const { sendOrderStatusEmail } = require("../../utils/sendEmail"); // Adjust path as needed
+const { sendOrderStatusEmail,sendOrderPlacedEmail } = require("../../utils/sendEmail"); // Adjust path as needed
 
 // Validation helper for a single order item
 // function isValidOrderItem(item) {
@@ -17,138 +17,249 @@ const { sendOrderStatusEmail } = require("../../utils/sendEmail"); // Adjust pat
 // }
 
 // Place a new order
+// exports.placeOrder = async (req, res) => {
+//   try {
+//     const {
+//       orderItems,
+//       shippingAddress,
+//       contactDetails,
+//       paymentMethod,
+//       paymentResult,
+//       itemsPrice,
+//       shippingPrice,
+//       // taxPrice,
+//       totalPrice,
+//     } = req.body;
+
+//     // --- 1. Basic validation for presence and type ---
+//     if (
+//       !Array.isArray(orderItems) ||
+//       orderItems.length === 0 ||
+//       !shippingAddress ||
+//       !contactDetails ||
+//       typeof itemsPrice !== "number" ||
+//       typeof shippingPrice !== "number" ||
+//       // typeof taxPrice !== "number" || // if you want to enforce in future
+//       typeof totalPrice !== "number"
+//     ) {
+//       return res.status(400).json({
+//         message:
+//           "Missing or invalid required fields: orderItems, shippingAddress, contactDetails, price fields",
+//       });
+//     }
+
+//     // --- 2. Validate each order item ---
+//     for (const item of orderItems) {
+//     //   if (!isValidOrderItem(item)) {
+//     //     return res
+//     //       .status(400)
+//     //       .json({ message: "One or more order items are invalid." });
+//     //   }
+//       // Check product existence and stock availability
+//       const productDoc = await Product.findById(item.product);
+//       if (!productDoc) {
+//         return res
+//           .status(400)
+//           .json({ message: `Product not found: ${item.product}` });
+//       }
+//       if (item.quantity > productDoc.countInStock) {
+//         return res.status(400).json({
+//           message: `Not enough stock for product "${productDoc.name}".`,
+//         });
+//       }
+//     }
+
+//     // --- 3. Validate shipping address fields ---
+//     const addressFields = [
+//       "fullName",
+//       "address",
+//       "city",
+//       "postalCode",
+//       "country",
+//     ];
+//     for (const field of addressFields) {
+//       if (
+//         !shippingAddress[field] ||
+//         shippingAddress[field].toString().trim().length === 0
+//       ) {
+//         return res.status(400).json({
+//           message: `Missing or empty shipping address field: ${field}`,
+//         });
+//       }
+//     }
+
+//     // --- 4. Validate contact details fields ---
+//     const contactFields = [
+//       "email",
+//       "phoneNumber",
+//       "address",
+//       "postalCode",
+//       "country",
+//       "city",
+//     ];
+//     for (const field of contactFields) {
+//       if (
+//         !contactDetails[field] ||
+//         contactDetails[field].toString().trim().length === 0
+//       ) {
+//         return res.status(400).json({
+//           message: `Missing or empty contact details field: ${field}`,
+//         });
+//       }
+//     }
+
+//     // --- 5. Assign user if authenticated ---
+//     let user = null;
+//     if (req.user && req.user._id) {
+//       user = req.user._id; // Assume auth middleware sets req.user
+//     }
+
+//     // --- 6. Create and save order ---
+//     const order = new Order({
+//       orderItems,
+//       shippingAddress,
+//       contactDetails,
+//       paymentMethod,
+//       paymentResult,
+//       itemsPrice,
+//       shippingPrice,
+//       // taxPrice,
+//       totalPrice,
+//       user,
+//     });
+//     const createdOrder = await order.save();
+
+//     // --- 7. Decrement product stock (await each update) ---
+//     for (const item of orderItems) {
+//       await Product.findByIdAndUpdate(
+//         item.product,
+//         { $inc: { countInStock: -item.quantity } },
+//         { new: true }
+//       );
+//     }
+
+//     return res.status(201).json({
+//       message: "Order placed successfully.",
+//       order: createdOrder,
+//     });
+//   } catch (error) {
+//     console.error("Error placing order:", error);
+//     return res
+//       .status(500)
+//       .json({ message: "Server error while placing order." });
+//   }
+// };
+
 exports.placeOrder = async (req, res) => {
-  try {
-    const {
-      orderItems,
-      shippingAddress,
-      contactDetails,
-      paymentMethod,
-      paymentResult,
-      itemsPrice,
-      shippingPrice,
-      // taxPrice,
-      totalPrice,
-    } = req.body;
-
-    // --- 1. Basic validation for presence and type ---
-    if (
-      !Array.isArray(orderItems) ||
-      orderItems.length === 0 ||
-      !shippingAddress ||
-      !contactDetails ||
-      typeof itemsPrice !== "number" ||
-      typeof shippingPrice !== "number" ||
-      // typeof taxPrice !== "number" || // if you want to enforce in future
-      typeof totalPrice !== "number"
-    ) {
-      return res.status(400).json({
-        message:
-          "Missing or invalid required fields: orderItems, shippingAddress, contactDetails, price fields",
+    try {
+      const {
+        orderItems,
+        shippingAddress,
+        contactDetails,
+        paymentMethod,
+        paymentResult,
+        itemsPrice,
+        shippingPrice,
+        totalPrice,
+      } = req.body;
+  
+      // --- 1. Basic validation (unchanged) ---
+      if (
+        !Array.isArray(orderItems) ||
+        orderItems.length === 0 ||
+        !shippingAddress ||
+        !contactDetails ||
+        typeof itemsPrice !== "number" ||
+        typeof shippingPrice !== "number" ||
+        typeof totalPrice !== "number"
+      ) {
+        return res.status(400).json({
+          message:
+            "Missing or invalid required fields: orderItems, shippingAddress, contactDetails, price fields",
+        });
+      }
+  
+      // --- 2. Validate each order item and stock availability ---
+      for (const item of orderItems) {
+        const productDoc = await Product.findById(item.product);
+        if (!productDoc) {
+          return res.status(400).json({ message: `Product not found: ${item.product}` });
+        }
+        if (item.quantity > productDoc.countInStock) {
+          return res.status(400).json({
+            message: `Not enough stock for product "${productDoc.name}".`,
+          });
+        }
+      }
+  
+      // --- 3. Validate shipping address fields ---
+      const addressFields = ["fullName", "address", "city", "postalCode", "country"];
+      for (const field of addressFields) {
+        if (!shippingAddress[field] || shippingAddress[field].toString().trim().length === 0) {
+          return res.status(400).json({
+            message: `Missing or empty shipping address field: ${field}`,
+          });
+        }
+      }
+  
+      // --- 4. Validate contact details fields ---
+      const contactFields = ["email", "phoneNumber", "address", "postalCode", "country", "city"];
+      for (const field of contactFields) {
+        if (!contactDetails[field] || contactDetails[field].toString().trim().length === 0) {
+          return res.status(400).json({
+            message: `Missing or empty contact details field: ${field}`,
+          });
+        }
+      }
+  
+      // --- 5. Assign user if authenticated ---
+      let user = null;
+      if (req.user && req.user._id) {
+        user = req.user._id;
+      }
+  
+      // --- 6. Create and save order ---
+      const order = new Order({
+        orderItems,
+        shippingAddress,
+        contactDetails,
+        paymentMethod,
+        paymentResult,
+        itemsPrice,
+        shippingPrice,
+        totalPrice,
+        user,
       });
-    }
-
-    // --- 2. Validate each order item ---
-    for (const item of orderItems) {
-    //   if (!isValidOrderItem(item)) {
-    //     return res
-    //       .status(400)
-    //       .json({ message: "One or more order items are invalid." });
-    //   }
-      // Check product existence and stock availability
-      const productDoc = await Product.findById(item.product);
-      if (!productDoc) {
-        return res
-          .status(400)
-          .json({ message: `Product not found: ${item.product}` });
+      const createdOrder = await order.save();
+  
+      // --- 7. Decrement product stock ---
+      for (const item of orderItems) {
+        await Product.findByIdAndUpdate(
+          item.product,
+          { $inc: { countInStock: -item.quantity } },
+          { new: true }
+        );
       }
-      if (item.quantity > productDoc.countInStock) {
-        return res.status(400).json({
-          message: `Not enough stock for product "${productDoc.name}".`,
-        });
+  
+      // --- 8. Send order confirmation email to user ---
+      const userEmail = contactDetails.email;
+      const userName = contactDetails.fullName || "Customer";
+  
+      if (userEmail) {
+        await sendOrderPlacedEmail(userEmail, userName, createdOrder._id, "placed");
+        // You can customize the status string as "placed" to indicate order confirmation email
       }
+  
+      return res.status(201).json({
+        message: "Order placed successfully.",
+        order: createdOrder,
+      });
+    } catch (error) {
+      console.error("Error placing order:", error);
+      return res.status(500).json({ message: "Server error while placing order." });
     }
+  };
 
-    // --- 3. Validate shipping address fields ---
-    const addressFields = [
-      "fullName",
-      "address",
-      "city",
-      "postalCode",
-      "country",
-    ];
-    for (const field of addressFields) {
-      if (
-        !shippingAddress[field] ||
-        shippingAddress[field].toString().trim().length === 0
-      ) {
-        return res.status(400).json({
-          message: `Missing or empty shipping address field: ${field}`,
-        });
-      }
-    }
-
-    // --- 4. Validate contact details fields ---
-    const contactFields = [
-      "email",
-      "phoneNumber",
-      "address",
-      "postalCode",
-      "country",
-      "city",
-    ];
-    for (const field of contactFields) {
-      if (
-        !contactDetails[field] ||
-        contactDetails[field].toString().trim().length === 0
-      ) {
-        return res.status(400).json({
-          message: `Missing or empty contact details field: ${field}`,
-        });
-      }
-    }
-
-    // --- 5. Assign user if authenticated ---
-    let user = null;
-    if (req.user && req.user._id) {
-      user = req.user._id; // Assume auth middleware sets req.user
-    }
-
-    // --- 6. Create and save order ---
-    const order = new Order({
-      orderItems,
-      shippingAddress,
-      contactDetails,
-      paymentMethod,
-      paymentResult,
-      itemsPrice,
-      shippingPrice,
-      // taxPrice,
-      totalPrice,
-      user,
-    });
-    const createdOrder = await order.save();
-
-    // --- 7. Decrement product stock (await each update) ---
-    for (const item of orderItems) {
-      await Product.findByIdAndUpdate(
-        item.product,
-        { $inc: { countInStock: -item.quantity } },
-        { new: true }
-      );
-    }
-
-    return res.status(201).json({
-      message: "Order placed successfully.",
-      order: createdOrder,
-    });
-  } catch (error) {
-    console.error("Error placing order:", error);
-    return res
-      .status(500)
-      .json({ message: "Server error while placing order." });
-  }
-};
 
 // Controller to get all orders (for admin or analytics)
 exports.getAllOrders = async (req, res) => {
@@ -309,8 +420,23 @@ exports.updateOrderStatus = async (req, res) => {
       { $set: updateFields },
       { new: true }
     );
+  
     if (!updatedOrder) {
       return res.status(404).json({ message: "Order not found." });
     }
+  
+    // Get user email and name from contactDetails on order
+    const userEmail = updatedOrder.contactDetails?.email;
+    const userName = updatedOrder.contactDetails?.fullName || "Customer";
+  
+    if (userEmail) {
+      try {
+        await sendOrderStatusEmail(userEmail, userName, updatedOrder._id, status);
+      } catch (err) {
+        console.error("Failed to send status email:", err);
+        // Optionally inform client email sending failed
+      }
+    }
+  
     res.status(200).json({ message: `Order marked as ${status}.`, order: updatedOrder });
-  }
+  };
