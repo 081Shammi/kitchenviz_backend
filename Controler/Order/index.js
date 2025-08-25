@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Order = require("../../Modals/OrderSchema");
 const Product = require("../../Modals/Products"); // To validate product existence
 const { ObjectId } = mongoose.Types;
+const { sendOrderStatusEmail } = require("../../utils/sendEmail"); // Adjust path as needed
 
 // Validation helper for a single order item
 // function isValidOrderItem(item) {
@@ -201,6 +202,15 @@ exports.updateOrderStatus = async (req, res) => {
       throw new Error("Order not found");
     }
   
+    // Get email and name from contactDetails on order schema when user is not logged in
+    const userEmail = updatedOrder.contactDetails?.email;
+    // Optionally fallback to a default name or use from contactDetails if available
+    const userName = updatedOrder.contactDetails?.fullName || "Customer";
+  
+    if (userEmail) {
+      await sendOrderStatusEmail(userEmail, userName, updatedOrder._id, status === "accept" ? "accepted" : "rejected");
+    }
+  
     res.json({ message: `Order ${status}ed successfully.`, order: updatedOrder });
   };
 
@@ -211,7 +221,7 @@ exports.updateOrderStatus = async (req, res) => {
     }
   
     const orderAggregate = await Order.aggregate([
-        { $match: { _id: new mongoose.Types.ObjectId(id) } },
+        { $match: { _id: new ObjectId(id) } },
         { $unwind: "$orderItems" },
         {
           $lookup: {
@@ -224,7 +234,7 @@ exports.updateOrderStatus = async (req, res) => {
         { $unwind: "$productDetails" },
         {
           $lookup: {
-            from: "media", // collection name for images
+            from: "media", 
             localField: "productDetails.image",
             foreignField: "_id",
             as: "productImages"
@@ -267,7 +277,6 @@ exports.updateOrderStatus = async (req, res) => {
       return res.status(404).json({ message: "Order not found." });
     }
   
-    // You may want to further populate user details here if needed
   
     res.status(200).json(orderAggregate[0]);
   }

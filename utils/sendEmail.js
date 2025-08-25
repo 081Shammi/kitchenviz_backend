@@ -1,57 +1,63 @@
-require("dotenv").config();
+// emailService.js
 
-const STATUS = require("../utils/statusCodes");
-const MESSAGE = require("../utils/messages");
+const nodemailer = require("nodemailer");
 
-const nodemailer = require('nodemailer');
+// Configure nodemailer transporter using your SMTP credentials
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
+  port: Number(process.env.SMTP_PORT) || 25,
+  secure: false, // Use true for port 465
+  auth: {
+    user: process.env.SMTP_USER || "shrikanthorp@gmail.com",
+    pass: process.env.SMTP_PASSWORD || "ldaknehgwnwrbvrg",
+  },
+});
 
-// const transporter = nodemailer.createTransport({
-//     host: process.env.TNO_V1_SMTP_HOST,
-//     port: process.env.TNO_V1_SMTP_PORT,
-//     auth: {
-//         user: process.env.TNO_V1_SMTP_USER,
-//         pass: process.env.TNO_V1_SMTP_PASSWORD
-//     },
-//     tls:{
-//         rejectUnauthorized:false
-//     }
-// });
+/**
+ * Generates HTML content for order status email
+ * @param {string} userName - User's name for personalization
+ * @param {string} orderId - Order ID to include in the email
+ * @param {string} status - Order status (e.g., 'accepted', 'rejected')
+ * @returns {string} - HTML content string
+ */
+const orderStatusEmailContent = (userName, orderId, status) => `
+  <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+    <h2>Order ${status}</h2>
+    <p>Hi ${userName},</p>
+    <p>Your order with ID <strong>${orderId}</strong> has been <strong>${status}</strong> by our admin.</p>
+    <p>If you have any questions, feel free to contact our support team.</p>
+    <br/>
+    <p>Thank you for shopping with us.</p>
+  </div>
+`;
 
-module.exports.sendForgotPasswordEmail = async (user, password) => {
-    try{
-        const sentEmail = await transporter.sendMail({
-            to: user.email_data.temp_email_id,
-            from: process.env.TNO_V1_SMTP_USER,
-            subject: 'Temporary Password | TNO.',
-            html: forgotEmailContent(user, password),
-            envelope: {
-                from: process.env.TNO_V1_SMTP_USER,
-                to: user.email_data.temp_email_id
-            }
-        });
-        return true
-    }
-    catch(error) {
-        console.log(error);
-        return false
-    }
+/**
+ * Sends an order status update email to the user
+ * @param {string} userEmail - Recipient email address
+ * @param {string} userName - Recipient name
+ * @param {string} orderId - Order ID
+ * @param {string} status - Status update (e.g., 'accepted', 'rejected')
+ * @returns {Promise<boolean>} - Returns true if email sent successfully, else false
+ */
+async function sendOrderStatusEmail(userEmail, userName, orderId, status) {
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_USER || "shrikanthorp@gmail.com",
+      to: userEmail,
+      subject: `Your order has been ${status}`,
+      html: orderStatusEmailContent(userName, orderId, status),
+      envelope: {
+        from: process.env.SMTP_USER || "shrikanthorp@gmail.com",
+        to: userEmail,
+      },
+    });
+    return true;
+  } catch (error) {
+    console.error("Error sending order status email:", error);
+    return false;
+  }
 }
 
-const capitalizeFirstLetter = (string) => {
-    return string.charAt(0).toUpperCase() + string.slice(1);
-}
-
-const forgotEmailContent = (user, password) => {
-    var html = `
-        <div>
-            <h3>Hello ${capitalizeFirstLetter(user.first_name)},</h3> </ br></ br>
-            <p><b>${password}</b> is your temporary password to login to your account of Taluk Nodal Officers Portal. Do not share this information with anyone else. Kindly change your password once you are successfully logged in to your account.</p> </ br></ br></ br>
-            <h4><b>Thanks & Regards,</b></h4> </ br>
-            <p>Govt. of Karnataka  ©️</p>
-        </div>
-    `;
-
-    const htmlData = html;
-
-    return htmlData;
-}
+module.exports = {
+  sendOrderStatusEmail,
+};
