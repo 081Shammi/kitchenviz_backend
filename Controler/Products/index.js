@@ -13,6 +13,11 @@ exports.createProduct = async (req, res) => {
         price,
         countInStock,
         productDiscountedPrice,
+        key_features,
+        specification,
+        use_of_product,
+        safety_instructions,
+        varenty
       } = req.body;
   
       // validations here...
@@ -32,6 +37,11 @@ exports.createProduct = async (req, res) => {
         price,
         countInStock,
         productDiscountedPrice,
+        key_features,
+        specification,
+        use_of_product,
+        safety_instructions,
+        varenty,
         rating: 0,
         numReviews: 0,
       });
@@ -129,6 +139,11 @@ exports.updateProduct = async (req, res) => {
       price,
       countInStock,
       productDiscountedPrice,
+      key_features,
+      specification,
+      use_of_product,
+      safety_instructions,
+      varenty
     } = req.body;
 
     const product = await Product.findById(req.params.id);
@@ -150,6 +165,11 @@ exports.updateProduct = async (req, res) => {
     if (price !== undefined) product.price = price;
     if (countInStock !== undefined) product.countInStock = countInStock;
     if (productDiscountedPrice !== undefined) product.productDiscountedPrice = productDiscountedPrice;
+    if (key_features !== undefined) product.key_features = key_features;
+    if (specification !== undefined) product.specification = specification;
+    if (use_of_product !== undefined) product.use_of_product = use_of_product;
+    if (safety_instructions !== undefined) product.safety_instructions = safety_instructions;
+    if (varenty !== undefined) product.varenty = varenty;
 
     const updatedProduct = await product.save();
     await updatedProduct.populate('category', 'name').populate('image').execPopulate();
