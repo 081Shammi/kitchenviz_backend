@@ -175,7 +175,7 @@ exports.deleteProduct = async (req, res) => {
         return res.status(404).json({ message: 'Product not found.' });
       }
   
-      await product.remove();
+      await product .deleteOne();
       return res.status(200).json({ message: 'Slider deleted successfully.' });
     } catch (error) {
       console.error('Error deleting slider:', error);
