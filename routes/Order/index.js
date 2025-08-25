@@ -14,4 +14,7 @@ router.patch(
     "/updateStatus/:id",updateOrderStatus
 );
 
+router.get("/order/:id", getOrderById);
+
+
 module.exports = router;

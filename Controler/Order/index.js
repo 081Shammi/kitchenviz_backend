@@ -203,3 +203,72 @@ exports.updateOrderStatus = async (req, res) => {
   
     res.json({ message: `Order ${status}ed successfully.`, order: updatedOrder });
   };
+
+  exports.getOrderById = async (req, res) => {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid order ID." });
+    }
+  
+    // Aggregation pipeline
+    const orderAggregate = await Order.aggregate([
+      { $match: { _id: new mongoose.Types.ObjectId(id) } },
+      {
+        $unwind: "$orderItems"
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "orderItems.product",
+          foreignField: "_id",
+          as: "productDetails"
+        }
+      },
+      {
+        $unwind: "$productDetails"
+      },
+      // Optionally populate images from media collection:
+      {
+        $lookup: {
+          from: "media", // collection name for images
+          localField: "productDetails.image",
+          foreignField: "_id",
+          as: "productImages"
+        }
+      },
+      // Reshape the final structure:
+      {
+        $group: {
+          _id: "$_id",
+          shippingAddress: { $first: "$shippingAddress" },
+          contactDetails: { $first: "$contactDetails" },
+          paymentMethod: { $first: "$paymentMethod" },
+          paymentResult: { $first: "$paymentResult" },
+          itemsPrice: { $first: "$itemsPrice" },
+          shippingPrice: { $first: "$shippingPrice" },
+          totalPrice: { $first: "$totalPrice" },
+        //   user: { $first: "$user" },
+          isPaid: { $first: "$isPaid" },
+          paidAt: { $first: "$paidAt" },
+          orderItems: {
+            $push: {
+              name: "$orderItems.name",
+              quantity: "$orderItems.quantity",
+              price: "$orderItems.price",
+              product: "$orderItems.product",
+              productDetails: "$productDetails",
+              productImages: "$productImages"
+            }
+          }
+        }
+      }
+    ]);
+  
+    if (!orderAggregate.length) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+  
+    // You may want to further populate user details here if needed
+  
+    res.status(200).json(orderAggregate[0]);
+  }
