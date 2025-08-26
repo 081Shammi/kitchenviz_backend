@@ -41,8 +41,13 @@ app.use(cors());
 app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
 
 app.use(morgan("dev"));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+const payloadLimit = 2 * 1024 * 1024 * 1024; // 2GB in bytes
+app.use(express.json({ limit: payloadLimit }));
+app.use(express.urlencoded({ limit: payloadLimit, extended: true }));
+
+// app.use(express.json({ limit: '10mb' }));
+// app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 const API_ROOT ='/api/' 
 app.use(`${API_ROOT}assets`, express.static(path.join(__dirname, "assets")));
