@@ -1,22 +1,279 @@
 const mongoose = require("mongoose");
+const crypto = require('crypto');
+const axios = require('axios');
+
 const Order = require("../../Modals/OrderSchema");
 const Product = require("../../Modals/Products"); // To validate product existence
 const { ObjectId } = mongoose.Types;
 const { sendOrderStatusEmail,sendOrderPlacedEmail } = require("../../utils/sendEmail"); // Adjust path as needed
+const {StandardCheckoutClient, Env, StandardCheckoutPayRequest} = require('pg-sdk-node')
+const clientId = process.env.CLIENT_ID
+const clientSecret = process.env.CLIENT_SECRET
+const clientVersion = 1
+const env = Env.PRODUCTION
 
-// Validation helper for a single order item
-// function isValidOrderItem(item) {
-//   return (
-//     item &&
-//     typeof item.name === "string" && item.name.trim().length > 0 &&
-//     typeof item.quantity === "number" && item.quantity > 0 &&
-//     typeof item.image === "string" && item.image.trim().length > 0 &&
-//     typeof item.price === "number" && item.price >= 0 &&
-//     item.product && ObjectId.isValid(item.product)
-//   );
-// }
+const client = StandardCheckoutClient.getInstance(clientId,clientSecret,clientVersion,env)
 
-// Place a new order
+exports.placeOrder = async (req, res) => {
+  try {
+    const {
+      orderItems,
+      shippingAddress,
+      contactDetails,
+      paymentMethod,
+      paymentResult,
+      itemsPrice,
+      shippingPrice,
+      totalPrice,
+    } = req.body;
+
+    // --- 1. Basic validation ---
+    if (
+      !Array.isArray(orderItems) ||
+      orderItems.length === 0 ||
+      !shippingAddress ||
+      !contactDetails ||
+      typeof itemsPrice !== "number" ||
+      typeof shippingPrice !== "number" ||
+      typeof totalPrice !== "number"
+    ) {
+      return res.status(400).json({
+        message:
+          "Missing or invalid required fields: orderItems, shippingAddress, contactDetails, price fields",
+      });
+    }
+
+    // --- 2. Validate each order item and stock availability ---
+    for (const item of orderItems) {
+      const productDoc = await Product.findById(item.product);
+      if (!productDoc) {
+        return res.status(400).json({ message: `Product not found: ${item.product}` });
+      }
+      if (item.quantity > productDoc.countInStock) {
+        return res.status(400).json({
+          message: `Not enough stock for product "${productDoc.name}".`,
+        });
+      }
+    }
+
+    // --- 3. Validate shipping address fields ---
+    const addressFields = ["fullName", "address", "city", "postalCode", "country"];
+    for (const field of addressFields) {
+      if (!shippingAddress[field] || shippingAddress[field].toString().trim().length === 0) {
+        return res.status(400).json({
+          message: `Missing or empty shipping address field: ${field}`,
+        });
+      }
+    }
+
+    // --- 4. Validate contact details fields ---
+    const contactFields = ["email", "phoneNumber", "address", "postalCode", "country", "city"];
+    for (const field of contactFields) {
+      if (!contactDetails[field] || contactDetails[field].toString().trim().length === 0) {
+        return res.status(400).json({
+          message: `Missing or empty contact details field: ${field}`,
+        });
+      }
+    }
+
+    // --- 5. Assign user if authenticated ---
+    let user = null;
+    if (req.user && req.user._id) {
+      user = req.user._id;
+    }
+
+    // --- 6. Create order with PENDING status (DON'T decrement stock yet) ---
+    const order = new Order({
+      orderItems,
+      shippingAddress,
+      contactDetails,
+      paymentMethod,
+      paymentResult,
+      itemsPrice,
+      shippingPrice,
+      totalPrice,
+      user,
+      orderStatus: 'pending', // Order is pending until payment success
+      paymentStatus: 'pending', // Payment is pending
+      isPaid: false
+    });
+
+    const createdOrder = await order.save();
+
+    // --- 7. PhonePe Payment Processing ---
+    try {
+      if (!totalPrice) {
+        // Delete the pending order if payment setup fails
+        await Order.findByIdAndDelete(createdOrder._id);
+        return res.status(400).json({ message: 'Amount is required' });
+      }
+
+      const merchantOrderId = createdOrder._id.toString();
+      console.log('merchantOrderId', merchantOrderId);
+      
+      const redirectUrl = `http://localhost:4050/order/check-status?merchantOrderId=${merchantOrderId}`;
+      const request = StandardCheckoutPayRequest.builder()
+        .merchantOrderId(merchantOrderId)
+        .amount(totalPrice)
+        .redirectUrl(redirectUrl)
+        .build();
+
+      const response = await client.pay(request);
+      
+      // Check if response has redirectUrl
+      if (!response.redirectUrl) {
+        // Delete the pending order if payment initiation fails
+        await Order.findByIdAndDelete(createdOrder._id);
+        return res.status(500).json({
+          message: 'Payment initiated but no redirect URL received',
+          data: response
+        });
+      }
+
+      // Update order with payment initiation details
+      await Order.findByIdAndUpdate(createdOrder._id, {
+        'paymentResult.paymentId': response.paymentId || merchantOrderId,
+        'paymentResult.status': 'initiated'
+      });
+
+      return res.status(200).json({
+        message: "Order created and payment initiated successfully",
+        orderId: createdOrder._id,
+        checkoutPageUrl: response.redirectUrl,
+      });
+
+    } catch (err) {
+      console.log('Error while initiating payment:', err);
+      
+      // Delete the pending order if payment fails
+      await Order.findByIdAndDelete(createdOrder._id);
+      
+      return res.status(500).json({ message: 'Error while initiating payment' });
+    }
+
+  } catch (error) {
+    console.error("Error placing order:", error);
+    return res.status(500).json({ message: "Server error while placing order." });
+  }
+};
+
+// Separate function to handle payment status check (called by redirect URL)
+exports.checkPaymentStatus = async (req, res) => {
+  try {
+    const { merchantOrderId } = req.query;
+
+    if (!merchantOrderId) {
+      return res.status(400).json({ message: 'Merchant Order ID is required' });
+    }
+
+    // Check payment status with PhonePe
+    const statusResponse = await client.checkStatus(merchantOrderId);
+    
+    const order = await Order.findById(merchantOrderId);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (statusResponse.code === 'PAYMENT_SUCCESS') {
+      // Payment successful - finalize the order
+      
+      // Final stock validation before decrementing
+      for (const item of order.orderItems) {
+        const productDoc = await Product.findById(item.product);
+        if (!productDoc) {
+          // Mark order as failed due to product unavailability
+          await Order.findByIdAndUpdate(merchantOrderId, {
+            orderStatus: 'failed',
+            paymentStatus: 'refund_required',
+            'paymentResult.status': 'success_but_failed_fulfillment'
+          });
+          return res.status(400).json({ 
+            message: `Product not found: ${item.product}. Order marked for refund.` 
+          });
+        }
+        if (item.quantity > productDoc.countInStock) {
+          // Mark order as failed due to insufficient stock
+          await Order.findByIdAndUpdate(merchantOrderId, {
+            orderStatus: 'failed',
+            paymentStatus: 'refund_required',
+            'paymentResult.status': 'success_but_insufficient_stock'
+          });
+          return res.status(400).json({
+            message: `Not enough stock for product "${productDoc.name}". Order marked for refund.`,
+          });
+        }
+      }
+
+      // Decrement product stock ONLY after payment success and final validation
+      for (const item of order.orderItems) {
+        await Product.findByIdAndUpdate(
+          item.product,
+          { $inc: { countInStock: -item.quantity } },
+          { new: true }
+        );
+      }
+
+      // Update order status to confirmed
+      const updatedOrder = await Order.findByIdAndUpdate(
+        merchantOrderId,
+        {
+          orderStatus: 'confirmed',
+          paymentStatus: 'completed',
+          isPaid: true,
+          paidAt: new Date(),
+          'paymentResult.status': 'success',
+          'paymentResult.update_time': new Date(),
+          'paymentResult.email_address': order.contactDetails.email
+        },
+        { new: true }
+      );
+
+      // Send order confirmation email
+      const userEmail = order.contactDetails.email;
+      const userName = order.shippingAddress.fullName || "Customer";
+
+      if (userEmail) {
+        try {
+          await sendOrderPlacedEmail(userEmail, userName, order._id, "confirmed");
+        } catch (emailError) {
+          console.error('Error sending order confirmation email:', emailError);
+        }
+      }
+
+      return res.status(200).json({
+        message: "Payment successful and order confirmed",
+        order: updatedOrder
+      });
+
+    } else if (statusResponse.code === 'PAYMENT_FAILED') {
+      // Payment failed - update order status
+      await Order.findByIdAndUpdate(merchantOrderId, {
+        orderStatus: 'cancelled',
+        paymentStatus: 'failed',
+        'paymentResult.status': 'failed'
+      });
+
+      return res.status(400).json({
+        message: "Payment failed. Order cancelled.",
+        paymentStatus: statusResponse
+      });
+
+    } else {
+      // Payment still pending
+      return res.status(200).json({
+        message: "Payment is still pending",
+        paymentStatus: statusResponse
+      });
+    }
+
+  } catch (error) {
+    console.error("Error checking payment status:", error);
+    return res.status(500).json({ message: "Error checking payment status" });
+  }
+};
+
+
+
 // exports.placeOrder = async (req, res) => {
 //   try {
 //     const {
@@ -27,11 +284,10 @@ const { sendOrderStatusEmail,sendOrderPlacedEmail } = require("../../utils/sendE
 //       paymentResult,
 //       itemsPrice,
 //       shippingPrice,
-//       // taxPrice,
 //       totalPrice,
 //     } = req.body;
 
-//     // --- 1. Basic validation for presence and type ---
+//     // --- 1. Basic validation ---
 //     if (
 //       !Array.isArray(orderItems) ||
 //       orderItems.length === 0 ||
@@ -39,7 +295,6 @@ const { sendOrderStatusEmail,sendOrderPlacedEmail } = require("../../utils/sendE
 //       !contactDetails ||
 //       typeof itemsPrice !== "number" ||
 //       typeof shippingPrice !== "number" ||
-//       // typeof taxPrice !== "number" || // if you want to enforce in future
 //       typeof totalPrice !== "number"
 //     ) {
 //       return res.status(400).json({
@@ -48,19 +303,11 @@ const { sendOrderStatusEmail,sendOrderPlacedEmail } = require("../../utils/sendE
 //       });
 //     }
 
-//     // --- 2. Validate each order item ---
+//     // --- 2. Validate each order item and stock availability ---
 //     for (const item of orderItems) {
-//     //   if (!isValidOrderItem(item)) {
-//     //     return res
-//     //       .status(400)
-//     //       .json({ message: "One or more order items are invalid." });
-//     //   }
-//       // Check product existence and stock availability
 //       const productDoc = await Product.findById(item.product);
 //       if (!productDoc) {
-//         return res
-//           .status(400)
-//           .json({ message: `Product not found: ${item.product}` });
+//         return res.status(400).json({ message: `Product not found: ${item.product}` });
 //       }
 //       if (item.quantity > productDoc.countInStock) {
 //         return res.status(400).json({
@@ -70,18 +317,9 @@ const { sendOrderStatusEmail,sendOrderPlacedEmail } = require("../../utils/sendE
 //     }
 
 //     // --- 3. Validate shipping address fields ---
-//     const addressFields = [
-//       "fullName",
-//       "address",
-//       "city",
-//       "postalCode",
-//       "country",
-//     ];
+//     const addressFields = ["fullName", "address", "city", "postalCode", "country"];
 //     for (const field of addressFields) {
-//       if (
-//         !shippingAddress[field] ||
-//         shippingAddress[field].toString().trim().length === 0
-//       ) {
+//       if (!shippingAddress[field] || shippingAddress[field].toString().trim().length === 0) {
 //         return res.status(400).json({
 //           message: `Missing or empty shipping address field: ${field}`,
 //         });
@@ -89,19 +327,9 @@ const { sendOrderStatusEmail,sendOrderPlacedEmail } = require("../../utils/sendE
 //     }
 
 //     // --- 4. Validate contact details fields ---
-//     const contactFields = [
-//       "email",
-//       "phoneNumber",
-//       "address",
-//       "postalCode",
-//       "country",
-//       "city",
-//     ];
+//     const contactFields = ["email", "phoneNumber", "address", "postalCode", "country", "city"];
 //     for (const field of contactFields) {
-//       if (
-//         !contactDetails[field] ||
-//         contactDetails[field].toString().trim().length === 0
-//       ) {
+//       if (!contactDetails[field] || contactDetails[field].toString().trim().length === 0) {
 //         return res.status(400).json({
 //           message: `Missing or empty contact details field: ${field}`,
 //         });
@@ -111,7 +339,7 @@ const { sendOrderStatusEmail,sendOrderPlacedEmail } = require("../../utils/sendE
 //     // --- 5. Assign user if authenticated ---
 //     let user = null;
 //     if (req.user && req.user._id) {
-//       user = req.user._id; // Assume auth middleware sets req.user
+//       user = req.user._id;
 //     }
 
 //     // --- 6. Create and save order ---
@@ -123,13 +351,12 @@ const { sendOrderStatusEmail,sendOrderPlacedEmail } = require("../../utils/sendE
 //       paymentResult,
 //       itemsPrice,
 //       shippingPrice,
-//       // taxPrice,
 //       totalPrice,
 //       user,
 //     });
 //     const createdOrder = await order.save();
 
-//     // --- 7. Decrement product stock (await each update) ---
+//     // --- 7. Decrement product stock ---
 //     for (const item of orderItems) {
 //       await Product.findByIdAndUpdate(
 //         item.product,
@@ -138,127 +365,70 @@ const { sendOrderStatusEmail,sendOrderPlacedEmail } = require("../../utils/sendE
 //       );
 //     }
 
+//     // --- 8. PhonePe Payment Processing ---
+//     try{
+//       if(!totalPrice){
+//         return res.status(400).send('Amount is required')
+//       }
+
+//       const merchantOrderId = createdOrder._id.toString()
+//       console.log('merchantOrderId',merchantOrderId)
+//       const redirectUrl = `http://localhost:4050/check-status?merchantOrderId=${merchantOrderId}`
+//       const request = StandardCheckoutPayRequest.builder()
+//       .merchantOrderId(merchantOrderId)
+//       .amount(totalPrice)
+//       .redirectUrl(redirectUrl)
+//       // .merchantName(shippingAddress.fullName)
+//       .build()
+
+//       const responce = await client.pay(request)
+      
+//       // Check if response has redirectUrl
+//       if (!responce.redirectUrl) {
+//         return res.status(500).json({
+//           message: 'Payment initiated but no redirect URL received',
+//           data: responce
+//         })
+//       }
+
+//       return res.status(200).json({
+
+//         checkoutPageUrl : responce.redirectUrl,
+        
+//       })
+
+//     }catch(err){
+//       console.log('error while payment', err)
+//       res.status(500).send('Error While Payment')
+//     }
+//     // --- 9. Send order confirmation email ---
+//     const userEmail = contactDetails.email;
+//     const userName = shippingAddress.fullName || "Customer";
+
+//     if (userEmail) {
+//       try {
+//         await sendOrderPlacedEmail(userEmail, userName, createdOrder._id, "placed");
+//       } catch (emailError) {
+//         console.error('Error sending order confirmation email:', emailError);
+//       }
+//     }
+
+//     // --- 10. Final response ---
 //     return res.status(201).json({
 //       message: "Order placed successfully.",
 //       order: createdOrder,
+//       payment: {
+//         status: 'initiated',
+//         data: paymentResponse,
+//         redirectUrl: paymentResponse.data?.instrumentResponse?.redirectInfo?.url || null
+//       }
 //     });
+
 //   } catch (error) {
 //     console.error("Error placing order:", error);
-//     return res
-//       .status(500)
-//       .json({ message: "Server error while placing order." });
+//     return res.status(500).json({ message: "Server error while placing order." });
 //   }
 // };
-
-exports.placeOrder = async (req, res) => {
-    try {
-      const {
-        orderItems,
-        shippingAddress,
-        contactDetails,
-        paymentMethod,
-        paymentResult,
-        itemsPrice,
-        shippingPrice,
-        totalPrice,
-      } = req.body;
-  
-      // --- 1. Basic validation (unchanged) ---
-      if (
-        !Array.isArray(orderItems) ||
-        orderItems.length === 0 ||
-        !shippingAddress ||
-        !contactDetails ||
-        typeof itemsPrice !== "number" ||
-        typeof shippingPrice !== "number" ||
-        typeof totalPrice !== "number"
-      ) {
-        return res.status(400).json({
-          message:
-            "Missing or invalid required fields: orderItems, shippingAddress, contactDetails, price fields",
-        });
-      }
-  
-      // --- 2. Validate each order item and stock availability ---
-      for (const item of orderItems) {
-        const productDoc = await Product.findById(item.product);
-        if (!productDoc) {
-          return res.status(400).json({ message: `Product not found: ${item.product}` });
-        }
-        if (item.quantity > productDoc.countInStock) {
-          return res.status(400).json({
-            message: `Not enough stock for product "${productDoc.name}".`,
-          });
-        }
-      }
-  
-      // --- 3. Validate shipping address fields ---
-      const addressFields = ["fullName", "address", "city", "postalCode", "country"];
-      for (const field of addressFields) {
-        if (!shippingAddress[field] || shippingAddress[field].toString().trim().length === 0) {
-          return res.status(400).json({
-            message: `Missing or empty shipping address field: ${field}`,
-          });
-        }
-      }
-  
-      // --- 4. Validate contact details fields ---
-      const contactFields = ["email", "phoneNumber", "address", "postalCode", "country", "city"];
-      for (const field of contactFields) {
-        if (!contactDetails[field] || contactDetails[field].toString().trim().length === 0) {
-          return res.status(400).json({
-            message: `Missing or empty contact details field: ${field}`,
-          });
-        }
-      }
-  
-      // --- 5. Assign user if authenticated ---
-      let user = null;
-      if (req.user && req.user._id) {
-        user = req.user._id;
-      }
-  
-      // --- 6. Create and save order ---
-      const order = new Order({
-        orderItems,
-        shippingAddress,
-        contactDetails,
-        paymentMethod,
-        paymentResult,
-        itemsPrice,
-        shippingPrice,
-        totalPrice,
-        user,
-      });
-      const createdOrder = await order.save();
-  
-      // --- 7. Decrement product stock ---
-      for (const item of orderItems) {
-        await Product.findByIdAndUpdate(
-          item.product,
-          { $inc: { countInStock: -item.quantity } },
-          { new: true }
-        );
-      }
-  
-      // --- 8. Send order confirmation email to user ---
-      const userEmail = contactDetails.email;
-      const userName = contactDetails.fullName || "Customer";
-  
-      if (userEmail) {
-        await sendOrderPlacedEmail(userEmail, userName, createdOrder._id, "placed");
-        // You can customize the status string as "placed" to indicate order confirmation email
-      }
-  
-      return res.status(201).json({
-        message: "Order placed successfully.",
-        order: createdOrder,
-      });
-    } catch (error) {
-      console.error("Error placing order:", error);
-      return res.status(500).json({ message: "Server error while placing order." });
-    }
-  };
 
 
 // Controller to get all orders (for admin or analytics)
@@ -325,72 +495,73 @@ exports.updateOrderStatus = async (req, res) => {
     res.json({ message: `Order ${status}ed successfully.`, order: updatedOrder });
   };
 
-  exports.getOrderById = async (req, res) => {
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid order ID." });
-    }
+  // exports.getOrderById = async (req, res) => {
+  //   const { id } = req.params;
+  //   console.log('give me id ',id)
+  //   if (!mongoose.Types.ObjectId.isValid(id)) {
+  //     return res.status(400).json({ message: "Invalid order ID." });
+  //   }
   
-    const orderAggregate = await Order.aggregate([
-        { $match: { _id: new ObjectId(id) } },
-        { $unwind: "$orderItems" },
-        {
-          $lookup: {
-            from: "products",
-            localField: "orderItems.product",
-            foreignField: "_id",
-            as: "productDetails"
-          }
-        },
-        { $unwind: "$productDetails" },
-        {
-          $lookup: {
-            from: "media", 
-            localField: "productDetails.image",
-            foreignField: "_id",
-            as: "productImages"
-          }
-        },
-        {
-          $group: {
-            _id: "$_id",
-            shippingAddress: { $first: "$shippingAddress" },
-            contactDetails: { $first: "$contactDetails" },
-            paymentMethod: { $first: "$paymentMethod" },
-            paymentResult: { $first: "$paymentResult" },
-            itemsPrice: { $first: "$itemsPrice" },
-            shippingPrice: { $first: "$shippingPrice" },
-            totalPrice: { $first: "$totalPrice" },
-            isPaid: { $first: "$isPaid" },
-            paidAt: { $first: "$paidAt" },
-            isCancelled: { $first: "$isCancelled" },
-            isOrderAccepted: { $first: "$isOrderAccepted" },
-            isOrderRejected: { $first: "$isOrderRejected" },
-            isDelivered: { $first: "$isDelivered" },
-            isDispatched: { $first: "$isDispatched" },
-            isOutForDelivery: { $first: "$isOutForDelivery" },
-            deliveredAt: { $first: "$deliveredAt" },
-            orderItems: {
-              $push: {
-                name: "$orderItems.name",
-                quantity: "$orderItems.quantity",
-                price: "$orderItems.price",
-                product: "$orderItems.product",
-                productDetails: "$productDetails",
-                productImages: "$productImages"
-              }
-            }
-          }
-        }
-      ]);
+  //   const orderAggregate = await Order.aggregate([
+  //       { $match: { _id: new ObjectId(id) } },
+  //       { $unwind: "$orderItems" },
+  //       {
+  //         $lookup: {
+  //           from: "products",
+  //           localField: "orderItems.product",
+  //           foreignField: "_id",
+  //           as: "productDetails"
+  //         }
+  //       },
+  //       { $unwind: "$productDetails" },
+  //       {
+  //         $lookup: {
+  //           from: "media", 
+  //           localField: "productDetails.image",
+  //           foreignField: "_id",
+  //           as: "productImages"
+  //         }
+  //       },
+  //       {
+  //         $group: {
+  //           _id: "$_id",
+  //           shippingAddress: { $first: "$shippingAddress" },
+  //           contactDetails: { $first: "$contactDetails" },
+  //           paymentMethod: { $first: "$paymentMethod" },
+  //           paymentResult: { $first: "$paymentResult" },
+  //           itemsPrice: { $first: "$itemsPrice" },
+  //           shippingPrice: { $first: "$shippingPrice" },
+  //           totalPrice: { $first: "$totalPrice" },
+  //           isPaid: { $first: "$isPaid" },
+  //           paidAt: { $first: "$paidAt" },
+  //           isCancelled: { $first: "$isCancelled" },
+  //           isOrderAccepted: { $first: "$isOrderAccepted" },
+  //           isOrderRejected: { $first: "$isOrderRejected" },
+  //           isDelivered: { $first: "$isDelivered" },
+  //           isDispatched: { $first: "$isDispatched" },
+  //           isOutForDelivery: { $first: "$isOutForDelivery" },
+  //           deliveredAt: { $first: "$deliveredAt" },
+  //           orderItems: {
+  //             $push: {
+  //               name: "$orderItems.name",
+  //               quantity: "$orderItems.quantity",
+  //               price: "$orderItems.price",
+  //               product: "$orderItems.product",
+  //               productDetails: "$productDetails",
+  //               productImages: "$productImages"
+  //             }
+  //           }
+  //         }
+  //       }
+  //     ]);
   
-    if (!orderAggregate.length) {
-      return res.status(404).json({ message: "Order not found." });
-    }
+  //   if (!orderAggregate.length) {
+  //     return res.status(404).json({ message: "Order not found." });
+  //   }
   
   
-    res.status(200).json(orderAggregate[0]);
-  }
+  //   res.status(200).json(orderAggregate[0]);
+  // }
 
   exports.updateShippingStatus = async (req, res) => {
     const { id } = req.params;
@@ -440,3 +611,30 @@ exports.updateOrderStatus = async (req, res) => {
   
     res.status(200).json({ message: `Order marked as ${status}.`, order: updatedOrder });
   };
+
+// Function to check PhonePe payment status
+exports.getStatusOfPayment = async (req, res) => {
+  console.log('getStatusOfPayment invoked with query:', req.query);
+
+  try {
+    const {merchantOrderId} = req.query
+    if(!merchantOrderId){
+      return res.status(400).send("MerchantOrderId is required")
+    }
+    const responce = await client.getOrderStatus(merchantOrderId)
+
+    const status = responce.state
+    if(status === 'COMPLETED'){
+      // return res.redirect('http://localhost:3001/payment-success');
+      return res.redirect('https://www.kitchenvizbuy.com/payment-success');
+    } else {
+      return res.redirect('https://www.kitchenvizbuy.com/payment-failure');
+
+      // return res.redirect('http://localhost:3001/payment-failure');
+    }
+    
+
+  } catch (error) {
+   console.log('error while Payment', error)
+  }
+};
