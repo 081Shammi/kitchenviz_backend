@@ -101,6 +101,8 @@ exports.placeOrder = async (req, res) => {
     const createdOrder = await order.save();
 
     // --- 7. PhonePe Payment Processing ---
+    const amountInPaise = Math.round(totalPrice * 100); // Convert ₹ to paise
+
     try {
       if (!totalPrice) {
         // Delete the pending order if payment setup fails
@@ -114,7 +116,7 @@ exports.placeOrder = async (req, res) => {
       const redirectUrl = `http://localhost:4050/order/check-status?merchantOrderId=${merchantOrderId}`;
       const request = StandardCheckoutPayRequest.builder()
         .merchantOrderId(merchantOrderId)
-        .amount(totalPrice)
+        .amount(amountInPaise)
         .redirectUrl(redirectUrl)
         .build();
 
