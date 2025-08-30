@@ -88,12 +88,12 @@ async function sendOrderStatusEmail(userEmail, userName, orderId, status) {
     }
 
     await transporter.sendMail({
-      from: process.env.SMTP_USER || "shrikanthorp@gmail.com",
+      from: process.env.SMTP_FROM_MAIL || "kitchenvission@gmail.com",
       to: userEmail,
       subject: `Your order has been ${status}`,
       html: htmlContent,
       envelope: {
-        from: process.env.SMTP_USER || "shrikanthorp@gmail.com",
+        from: process.env.SMTP_FROM_MAIL || "kitchenvission@gmail.com",
         to: userEmail,
       },
     });
@@ -111,12 +111,12 @@ async function sendOrderStatusEmail(userEmail, userName, orderId, status) {
 async function sendOrderPlacedEmail(userEmail, userName, orderId) {
   try {
     await transporter.sendMail({
-      from: process.env.SMTP_USER || "shrikanthorp@gmail.com",
+      from: process.env.SMTP_FROM_MAIL || "kitchenvission@gmail.com",
       to: userEmail,
       subject: "Your order has been placed successfully",
       html: orderPlacedEmailContent(userName, orderId),
       envelope: {
-        from: process.env.SMTP_USER || "shrikanthorp@gmail.com",
+        from: process.env.SMTP_FROM_MAIL || "kitchenvission@gmail.com",
         to: userEmail,
       },
     });
