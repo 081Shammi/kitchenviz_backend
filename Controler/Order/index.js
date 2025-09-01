@@ -113,7 +113,7 @@ exports.placeOrder = async (req, res) => {
       const merchantOrderId = createdOrder._id.toString();
       console.log('merchantOrderId', merchantOrderId);
       
-      const redirectUrl = `http://localhost:4050/api/order/check-status?merchantOrderId=${merchantOrderId}`;
+      const redirectUrl = `https://www.kitchenvizbuy.com/api/order/check-status?merchantOrderId=${merchantOrderId}`;
       const request = StandardCheckoutPayRequest.builder()
         .merchantOrderId(merchantOrderId)
         .amount(amountInPaise)
