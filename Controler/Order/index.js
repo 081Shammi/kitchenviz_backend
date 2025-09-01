@@ -113,7 +113,7 @@ exports.placeOrder = async (req, res) => {
       const merchantOrderId = createdOrder._id.toString();
       console.log('merchantOrderId', merchantOrderId);
       
-      const redirectUrl = `http://localhost:4050/order/check-status?merchantOrderId=${merchantOrderId}`;
+      const redirectUrl = `http://localhost:4050/api/order/check-status?merchantOrderId=${merchantOrderId}`;
       const request = StandardCheckoutPayRequest.builder()
         .merchantOrderId(merchantOrderId)
         .amount(amountInPaise)
@@ -497,73 +497,73 @@ exports.updateOrderStatus = async (req, res) => {
     res.json({ message: `Order ${status}ed successfully.`, order: updatedOrder });
   };
 
-  // exports.getOrderById = async (req, res) => {
-  //   const { id } = req.params;
-  //   console.log('give me id ',id)
-  //   if (!mongoose.Types.ObjectId.isValid(id)) {
-  //     return res.status(400).json({ message: "Invalid order ID." });
-  //   }
+  exports.getOrderById = async (req, res) => {
+    const { id } = req.params;
+    console.log('give me id ',id)
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid order ID." });
+    }
   
-  //   const orderAggregate = await Order.aggregate([
-  //       { $match: { _id: new ObjectId(id) } },
-  //       { $unwind: "$orderItems" },
-  //       {
-  //         $lookup: {
-  //           from: "products",
-  //           localField: "orderItems.product",
-  //           foreignField: "_id",
-  //           as: "productDetails"
-  //         }
-  //       },
-  //       { $unwind: "$productDetails" },
-  //       {
-  //         $lookup: {
-  //           from: "media", 
-  //           localField: "productDetails.image",
-  //           foreignField: "_id",
-  //           as: "productImages"
-  //         }
-  //       },
-  //       {
-  //         $group: {
-  //           _id: "$_id",
-  //           shippingAddress: { $first: "$shippingAddress" },
-  //           contactDetails: { $first: "$contactDetails" },
-  //           paymentMethod: { $first: "$paymentMethod" },
-  //           paymentResult: { $first: "$paymentResult" },
-  //           itemsPrice: { $first: "$itemsPrice" },
-  //           shippingPrice: { $first: "$shippingPrice" },
-  //           totalPrice: { $first: "$totalPrice" },
-  //           isPaid: { $first: "$isPaid" },
-  //           paidAt: { $first: "$paidAt" },
-  //           isCancelled: { $first: "$isCancelled" },
-  //           isOrderAccepted: { $first: "$isOrderAccepted" },
-  //           isOrderRejected: { $first: "$isOrderRejected" },
-  //           isDelivered: { $first: "$isDelivered" },
-  //           isDispatched: { $first: "$isDispatched" },
-  //           isOutForDelivery: { $first: "$isOutForDelivery" },
-  //           deliveredAt: { $first: "$deliveredAt" },
-  //           orderItems: {
-  //             $push: {
-  //               name: "$orderItems.name",
-  //               quantity: "$orderItems.quantity",
-  //               price: "$orderItems.price",
-  //               product: "$orderItems.product",
-  //               productDetails: "$productDetails",
-  //               productImages: "$productImages"
-  //             }
-  //           }
-  //         }
-  //       }
-  //     ]);
+    const orderAggregate = await Order.aggregate([
+        { $match: { _id: new ObjectId(id) } },
+        { $unwind: "$orderItems" },
+        {
+          $lookup: {
+            from: "products",
+            localField: "orderItems.product",
+            foreignField: "_id",
+            as: "productDetails"
+          }
+        },
+        { $unwind: "$productDetails" },
+        {
+          $lookup: {
+            from: "media", 
+            localField: "productDetails.image",
+            foreignField: "_id",
+            as: "productImages"
+          }
+        },
+        {
+          $group: {
+            _id: "$_id",
+            shippingAddress: { $first: "$shippingAddress" },
+            contactDetails: { $first: "$contactDetails" },
+            paymentMethod: { $first: "$paymentMethod" },
+            paymentResult: { $first: "$paymentResult" },
+            itemsPrice: { $first: "$itemsPrice" },
+            shippingPrice: { $first: "$shippingPrice" },
+            totalPrice: { $first: "$totalPrice" },
+            isPaid: { $first: "$isPaid" },
+            paidAt: { $first: "$paidAt" },
+            isCancelled: { $first: "$isCancelled" },
+            isOrderAccepted: { $first: "$isOrderAccepted" },
+            isOrderRejected: { $first: "$isOrderRejected" },
+            isDelivered: { $first: "$isDelivered" },
+            isDispatched: { $first: "$isDispatched" },
+            isOutForDelivery: { $first: "$isOutForDelivery" },
+            deliveredAt: { $first: "$deliveredAt" },
+            orderItems: {
+              $push: {
+                name: "$orderItems.name",
+                quantity: "$orderItems.quantity",
+                price: "$orderItems.price",
+                product: "$orderItems.product",
+                productDetails: "$productDetails",
+                productImages: "$productImages"
+              }
+            }
+          }
+        }
+      ]);
   
-  //   if (!orderAggregate.length) {
-  //     return res.status(404).json({ message: "Order not found." });
-  //   }
+    if (!orderAggregate.length) {
+      return res.status(404).json({ message: "Order not found." });
+    }
   
   
-  //   res.status(200).json(orderAggregate[0]);
-  // }
+    res.status(200).json(orderAggregate[0]);
+  }
 
   exports.updateShippingStatus = async (req, res) => {
     const { id } = req.params;

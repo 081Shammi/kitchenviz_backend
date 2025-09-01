@@ -69,3 +69,4 @@ The application includes comprehensive error handling for:
 
 Payment failures won't prevent order creation, but will be logged for monitoring.
 
+
