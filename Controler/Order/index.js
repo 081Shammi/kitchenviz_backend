@@ -456,28 +456,64 @@ exports.updateOrderStatus = async (req, res) => {
   };
 
 // Function to check PhonePe payment status
+// exports.getStatusOfPayment = async (req, res) => {
+//   console.log('getStatusOfPayment invoked with query:', req.query);
+
+//   try {
+//     const {merchantOrderId} = req.query
+//     if(!merchantOrderId){
+//       return res.status(400).send("MerchantOrderId is required")
+//     }
+//     const responce = await client.getOrderStatus(merchantOrderId)
+
+//     const status = responce.state
+//     if(status === 'COMPLETED'){
+//       // return res.redirect('http://localhost:3001/payment-success');
+//       return res.redirect('https://www.kitchenvizbuy.com/payment-success');
+//     } else {
+//       return res.redirect('https://www.kitchenvizbuy.com/payment-failure');
+
+//       // return res.redirect('http://localhost:3001/payment-failure');
+//     }
+    
+
+//   } catch (error) {
+//    console.log('error while Payment', error)
+//   }
+// };
+
+
 exports.getStatusOfPayment = async (req, res) => {
   console.log('getStatusOfPayment invoked with query:', req.query);
 
   try {
-    const {merchantOrderId} = req.query
-    if(!merchantOrderId){
-      return res.status(400).send("MerchantOrderId is required")
+    const { merchantOrderId } = req.query;
+    if (!merchantOrderId) {
+      return res.status(400).send("MerchantOrderId is required");
     }
-    const responce = await client.getOrderStatus(merchantOrderId)
+    const responce = await client.getOrderStatus(merchantOrderId);
+    const status = responce.state;
 
-    const status = responce.state
-    if(status === 'COMPLETED'){
-      // return res.redirect('http://localhost:3001/payment-success');
+    // Update paymentResult.status before redirecting
+    if (status === 'COMPLETED') {
+      await Order.findByIdAndUpdate(
+        merchantOrderId,
+        { 
+          'paymentResult.status': 'COMPLETED' // update to capital since your provider returns this
+        }
+      );
       return res.redirect('https://www.kitchenvizbuy.com/payment-success');
     } else {
+      await Order.findByIdAndUpdate(
+        merchantOrderId,
+        { 
+          'paymentResult.status': 'FAILURE'
+        }
+      );
       return res.redirect('https://www.kitchenvizbuy.com/payment-failure');
-
-      // return res.redirect('http://localhost:3001/payment-failure');
     }
-    
 
   } catch (error) {
-   console.log('error while Payment', error)
+   console.log('error while Payment', error);
   }
 };
