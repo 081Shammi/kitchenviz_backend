@@ -171,8 +171,12 @@ exports.updateProduct = async (req, res) => {
     if (safety_instructions !== undefined) product.safety_instructions = safety_instructions;
     if (varenty !== undefined) product.varenty = varenty;
 
+    // Save updated product
     const updatedProduct = await product.save();
-    await updatedProduct.populate('category', 'name').populate('image').execPopulate();
+
+    // Populate fields on the document (supported in Mongoose 6+)
+    await updatedProduct.populate('category', 'name');
+    await updatedProduct.populate('image'); // You can pass options if needed
 
     return res.status(200).json(updatedProduct);
   } catch (error) {
@@ -180,6 +184,7 @@ exports.updateProduct = async (req, res) => {
     return res.status(500).json({ message: 'Server error while updating product.' });
   }
 };
+
 
 
 exports.deleteProduct = async (req, res) => {

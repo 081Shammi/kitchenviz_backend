@@ -12,14 +12,14 @@ router.patch(
     "/updateStatus/:id",updateOrderStatus
 );
 
-// router.get("/:id", getOrderById);
+router.get('/check-status', getStatusOfPayment);
+router.get("/:id", getOrderById);
 
 router.patch(
     "/updateShippingStatus/:id",updateShippingStatus
   );
   router.get('/test', (req, res) => res.send('Order router test OK'));
 
-router.get('/check-status', getStatusOfPayment);
   
   
   module.exports = router;
